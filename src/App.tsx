@@ -23,18 +23,19 @@ import { DailyReportForm } from './components/employee/DailyReportForm';
 import { MyAssignmentsView } from './components/employee/MyAssignmentsView';
 import { ReportHistoryView } from './components/employee/ReportHistoryView';
 
-import { Shield, Loader2 } from 'lucide-react';
+import { getTodayDateString } from './lib/dateUtils';
+import { Shield, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 
 const MainAppContent: React.FC = () => {
   const { user, profile, isLoading } = useAuth();
+  const { dataError, refreshData } = useData();
 
   const [currentView, setCurrentView] = useState<NavView>('dashboard');
-  const [selectedReportDate, setSelectedReportDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
+  const [selectedReportDate, setSelectedReportDate] = useState<string>(getTodayDateString());
   const [isSupabaseConfigOpen, setIsSupabaseConfigOpen] = useState(false);
   const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
   const [preselectedProjectId, setPreselectedProjectId] = useState<string | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -44,7 +45,7 @@ const MainAppContent: React.FC = () => {
         </div>
         <div className="flex items-center gap-2 text-sm font-medium">
           <Loader2 size={16} className="animate-spin text-cyan-400" />
-          <span>Initializing eSecurityIn Tracker &amp; Supabase Session...</span>
+          <span>Authenticating eSecurityIn Session...</span>
         </div>
       </div>
     );
@@ -94,7 +95,28 @@ const MainAppContent: React.FC = () => {
       <SupabaseSetupBanner onOpenConfig={() => setIsSupabaseConfigOpen(true)} />
 
       {/* Main Top Navigation */}
-      <Navbar onOpenSupabaseConfig={() => setIsSupabaseConfigOpen(true)} />
+      <Navbar
+        onOpenSupabaseConfig={() => setIsSupabaseConfigOpen(true)}
+        onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        isMobileMenuOpen={isMobileMenuOpen}
+      />
+
+      {/* Database Error Banner if any */}
+      {dataError && (
+        <div className="bg-rose-950/40 border-b border-rose-800/40 px-4 py-2 flex items-center justify-between text-xs text-rose-300">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={14} className="text-rose-400 flex-shrink-0" />
+            <span>{dataError}</span>
+          </div>
+          <button
+            onClick={() => refreshData()}
+            className="flex items-center gap-1 hover:text-rose-100 underline transition-colors cursor-pointer"
+          >
+            <RefreshCw size={12} />
+            Retry Sync
+          </button>
+        </div>
+      )}
 
       {/* Main App Body */}
       <div className="flex-1 flex overflow-hidden">
@@ -108,6 +130,8 @@ const MainAppContent: React.FC = () => {
               setCurrentView(view);
             }
           }}
+          isMobileOpen={isMobileMenuOpen}
+          onCloseMobile={() => setIsMobileMenuOpen(false)}
         />
 
         {/* Dynamic Main Workspace Container */}
@@ -152,7 +176,7 @@ const MainAppContent: React.FC = () => {
                 {currentView === 'my_tasks' && (
                   <MyAssignmentsView
                     onOpenReportWithTask={() => {
-                      setSelectedReportDate(new Date().toISOString().split('T')[0]);
+                      setSelectedReportDate(getTodayDateString());
                       setCurrentView('my_report');
                     }}
                   />
@@ -171,7 +195,7 @@ const MainAppContent: React.FC = () => {
         </main>
       </div>
 
-      {/* Global Supabase Config Modal */}
+      {/* Global Supabase Reference Modal */}
       <SupabaseConfigModal
         isOpen={isSupabaseConfigOpen}
         onClose={() => setIsSupabaseConfigOpen(false)}

@@ -1,7 +1,7 @@
 -- ==============================================================================
 -- eSecurityIn Employee Daily Work Tracker: Database Schema & RLS Migration
 -- Production-ready PostgreSQL schema with Row-Level Security, Constraints,
--- Triggers, and Role-Based Access Control for Supabase.
+-- Atomic RPC Transaction Functions, and Role-Based Access Control.
 -- ==============================================================================
 
 -- 1. Enable UUID Extension
@@ -57,13 +57,13 @@ $$ LANGUAGE plpgsql;
 -- TABLE DEFINITIONS
 -- ==============================================================================
 
--- 3.1 profiles
+-- 3.1 profiles (Protected: role and is_active can never be self-modified)
 CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     employee_id TEXT UNIQUE NOT NULL,
     full_name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
-    department TEXT NOT NULL DEFAULT 'Cybersecurity',
+    department TEXT NOT NULL DEFAULT 'Cybersecurity Operations',
     job_title TEXT NOT NULL DEFAULT 'Security Specialist',
     role user_role NOT NULL DEFAULT 'employee',
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -85,10 +85,10 @@ CREATE TABLE IF NOT EXISTS public.projects (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 3.3 work_items (Projects Subtasks or Standalone Tasks)
+-- 3.3 work_items (Project Subtasks or Standalone Tasks)
 CREATE TABLE IF NOT EXISTS public.work_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL, -- nullable for standalone
+    project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL,
     title TEXT NOT NULL,
     description TEXT,
     priority item_priority NOT NULL DEFAULT 'medium',
@@ -251,6 +251,7 @@ AS $$
 $$;
 
 -- Trigger to safely create a profile entry upon Supabase auth signup
+-- SECURITY NOTE: Public signup NEVER creates an administrator. Role is ALWAYS 'employee'.
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -258,19 +259,12 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_role user_role;
   v_emp_id TEXT;
   v_count INT;
 BEGIN
-  -- First user in the system automatically becomes the primary admin
   SELECT COUNT(*) INTO v_count FROM public.profiles;
-  IF v_count = 0 THEN
-    v_role := 'admin'::user_role;
-  ELSE
-    v_role := 'employee'::user_role;
-  END IF;
 
-  -- Generate default Employee ID if not supplied in metadata
+  -- Generate default sequential Employee ID: ESI-101, ESI-102, etc.
   v_emp_id := COALESCE(
     NEW.raw_user_meta_data->>'employee_id',
     'ESI-' || LPAD((v_count + 101)::TEXT, 4, '0')
@@ -291,8 +285,8 @@ BEGIN
     COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
     NEW.email,
     COALESCE(NEW.raw_user_meta_data->>'department', 'Cybersecurity Operations'),
-    COALESCE(NEW.raw_user_meta_data->>'job_title', 'Security Analyst'),
-    v_role,
+    COALESCE(NEW.raw_user_meta_data->>'job_title', 'Security Specialist'),
+    'employee'::user_role, -- Enforce employee role strictly
     TRUE
   ) ON CONFLICT (id) DO NOTHING;
 
@@ -300,7 +294,6 @@ BEGIN
 END;
 $$;
 
--- Bind trigger to auth.users
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
@@ -310,7 +303,6 @@ CREATE TRIGGER on_auth_user_created
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- ==============================================================================
 
--- Enable RLS on all tables
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.work_items ENABLE ROW LEVEL SECURITY;
@@ -325,24 +317,24 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 -- ------------------------------------------------------------------------------
 -- 1. PROFILES RLS
 -- ------------------------------------------------------------------------------
--- Active authenticated users can read all active profiles (for team assignees, mentions, reviews)
-CREATE POLICY "Profiles are viewable by active authenticated users"
+-- Active authenticated users can read all active profiles
+CREATE POLICY "Profiles viewable by active authenticated users"
 ON public.profiles FOR SELECT
 TO authenticated
 USING (public.is_active_user() OR id = auth.uid());
 
--- Users can update their own personal non-privileged profile data
-CREATE POLICY "Users can update their own non-privileged profile info"
+-- Users can update their own personal info BUT cannot change role or is_active
+CREATE POLICY "Users can update own personal non-privileged profile"
 ON public.profiles FOR UPDATE
 TO authenticated
 USING (id = auth.uid())
 WITH CHECK (
   id = auth.uid()
-  AND role = (SELECT p.role FROM public.profiles p WHERE p.id = auth.uid()) -- Prevents self-escalation to admin
-  AND is_active = (SELECT p.is_active FROM public.profiles p WHERE p.id = auth.uid()) -- Cannot unban self
+  AND role = (SELECT p.role FROM public.profiles p WHERE p.id = auth.uid())
+  AND is_active = (SELECT p.is_active FROM public.profiles p WHERE p.id = auth.uid())
 );
 
--- Admins can update any profile (e.g., promote to admin, deactivate, change department)
+-- Administrators can update any profile (promotion, department reassignments, deactivation)
 CREATE POLICY "Admins can update any profile"
 ON public.profiles FOR UPDATE
 TO authenticated
@@ -352,34 +344,22 @@ WITH CHECK (public.is_admin());
 -- ------------------------------------------------------------------------------
 -- 2. PROJECTS RLS
 -- ------------------------------------------------------------------------------
--- All active employees can view projects
-CREATE POLICY "Active users can view projects"
+CREATE POLICY "Active users view projects"
 ON public.projects FOR SELECT
 TO authenticated
 USING (public.is_active_user());
 
--- Only admins can insert, update, or delete projects
-CREATE POLICY "Admins can insert projects"
-ON public.projects FOR INSERT
-TO authenticated
-WITH CHECK (public.is_admin());
-
-CREATE POLICY "Admins can update projects"
-ON public.projects FOR UPDATE
+CREATE POLICY "Admins manage projects"
+ON public.projects FOR ALL
 TO authenticated
 USING (public.is_admin())
 WITH CHECK (public.is_admin());
 
-CREATE POLICY "Admins can delete projects"
-ON public.projects FOR DELETE
-TO authenticated
-USING (public.is_admin());
-
 -- ------------------------------------------------------------------------------
 -- 3. WORK_ITEMS RLS
 -- ------------------------------------------------------------------------------
--- Admins can view all work items; employees can view work items assigned to them or their projects
-CREATE POLICY "Users can view permitted work items"
+-- Admins view all; employees view items assigned to them or standalone items
+CREATE POLICY "Users view assigned or permitted work items"
 ON public.work_items FOR SELECT
 TO authenticated
 USING (
@@ -389,30 +369,19 @@ USING (
     WHERE wa.work_item_id = public.work_items.id
       AND wa.employee_id = auth.uid()
   )
+  OR (public.is_active_user() AND project_id IS NULL)
 );
 
--- Only admins can create, update, and delete work items
-CREATE POLICY "Admins can insert work items"
-ON public.work_items FOR INSERT
-TO authenticated
-WITH CHECK (public.is_admin());
-
-CREATE POLICY "Admins can update work items"
-ON public.work_items FOR UPDATE
+CREATE POLICY "Admins manage work items"
+ON public.work_items FOR ALL
 TO authenticated
 USING (public.is_admin())
 WITH CHECK (public.is_admin());
 
-CREATE POLICY "Admins can delete work items"
-ON public.work_items FOR DELETE
-TO authenticated
-USING (public.is_admin());
-
 -- ------------------------------------------------------------------------------
 -- 4. WORK_ASSIGNMENTS RLS
 -- ------------------------------------------------------------------------------
--- Admins see all assignments; employees see assignments allocated to themselves
-CREATE POLICY "Users can view relevant work assignments"
+CREATE POLICY "Users view relevant assignments"
 ON public.work_assignments FOR SELECT
 TO authenticated
 USING (
@@ -420,8 +389,7 @@ USING (
   OR employee_id = auth.uid()
 );
 
--- Only admins can assign or reassign work items
-CREATE POLICY "Admins can manage work assignments"
+CREATE POLICY "Admins manage assignments"
 ON public.work_assignments FOR ALL
 TO authenticated
 USING (public.is_admin())
@@ -430,8 +398,8 @@ WITH CHECK (public.is_admin());
 -- ------------------------------------------------------------------------------
 -- 5. DAILY_REPORTS RLS
 -- ------------------------------------------------------------------------------
--- Admins can view all daily reports; employees can view only their own
-CREATE POLICY "Users can view permitted daily reports"
+-- Admins view all; employees view ONLY their own reports
+CREATE POLICY "Users view authorized daily reports"
 ON public.daily_reports FOR SELECT
 TO authenticated
 USING (
@@ -439,8 +407,8 @@ USING (
   OR employee_id = auth.uid()
 );
 
--- Employees can create daily reports for themselves
-CREATE POLICY "Employees can create their own daily reports"
+-- Employees insert their own daily reports
+CREATE POLICY "Employees insert own reports"
 ON public.daily_reports FOR INSERT
 TO authenticated
 WITH CHECK (
@@ -448,8 +416,8 @@ WITH CHECK (
   AND public.is_active_user()
 );
 
--- Employees can update their own daily reports if in 'draft' or 'revision_requested'
-CREATE POLICY "Employees can update their draft or revision-requested reports"
+-- Employees update their own reports ONLY if draft or revision_requested (NEVER if approved)
+CREATE POLICY "Employees update own editable reports"
 ON public.daily_reports FOR UPDATE
 TO authenticated
 USING (
@@ -458,18 +426,18 @@ USING (
 )
 WITH CHECK (
   employee_id = auth.uid()
-  AND status IN ('draft', 'submitted') -- Employee cannot self-approve
+  AND status IN ('draft', 'submitted') -- Cannot self-approve
 );
 
--- Admins can review and update status of any daily report
-CREATE POLICY "Admins can review any daily report"
+-- Admins review daily reports
+CREATE POLICY "Admins review any daily report"
 ON public.daily_reports FOR UPDATE
 TO authenticated
 USING (public.is_admin())
 WITH CHECK (public.is_admin());
 
--- Employees can delete only their own draft reports
-CREATE POLICY "Employees can delete draft reports"
+-- Employees delete drafts only
+CREATE POLICY "Employees delete draft reports"
 ON public.daily_reports FOR DELETE
 TO authenticated
 USING (
@@ -480,8 +448,7 @@ USING (
 -- ------------------------------------------------------------------------------
 -- 6. DAILY_WORK_ENTRIES RLS
 -- ------------------------------------------------------------------------------
--- Viewable by admins or the report owner
-CREATE POLICY "Users can view permitted work entries"
+CREATE POLICY "Users view authorized entries"
 ON public.daily_work_entries FOR SELECT
 TO authenticated
 USING (
@@ -493,8 +460,7 @@ USING (
   )
 );
 
--- Employees can insert work entries only to their own draft or revision_requested reports
-CREATE POLICY "Employees can insert entries into their editable reports"
+CREATE POLICY "Employees insert entries into editable reports"
 ON public.daily_work_entries FOR INSERT
 TO authenticated
 WITH CHECK (
@@ -506,8 +472,7 @@ WITH CHECK (
   )
 );
 
--- Employees can update entries only on their own editable reports
-CREATE POLICY "Employees can update entries in their editable reports"
+CREATE POLICY "Employees update entries in editable reports"
 ON public.daily_work_entries FOR UPDATE
 TO authenticated
 USING (
@@ -527,8 +492,7 @@ WITH CHECK (
   )
 );
 
--- Employees can delete entries from their own editable reports
-CREATE POLICY "Employees can delete entries from their editable reports"
+CREATE POLICY "Employees delete entries in editable reports"
 ON public.daily_work_entries FOR DELETE
 TO authenticated
 USING (
@@ -543,8 +507,7 @@ USING (
 -- ------------------------------------------------------------------------------
 -- 7. REPORT_COMMENTS RLS
 -- ------------------------------------------------------------------------------
--- Viewable if user is admin or the report owner
-CREATE POLICY "Comments viewable by report owner or admin"
+CREATE POLICY "Comments viewable by report author or admin"
 ON public.report_comments FOR SELECT
 TO authenticated
 USING (
@@ -556,8 +519,7 @@ USING (
   )
 );
 
--- Admins and report owners can comment
-CREATE POLICY "Admins and report owners can add comments"
+CREATE POLICY "Comments addable by report author or admin"
 ON public.report_comments FOR INSERT
 TO authenticated
 WITH CHECK (
@@ -583,7 +545,7 @@ USING (
   OR employee_id = auth.uid()
 );
 
-CREATE POLICY "Authorized users can log progress history"
+CREATE POLICY "Progress history insertable by authorized users"
 ON public.progress_history FOR INSERT
 TO authenticated
 WITH CHECK (
@@ -594,21 +556,18 @@ WITH CHECK (
 -- ------------------------------------------------------------------------------
 -- 9. NOTIFICATIONS RLS
 -- ------------------------------------------------------------------------------
--- Users can only see their own notifications
-CREATE POLICY "Users can view their own notifications"
+CREATE POLICY "Users view own notifications"
 ON public.notifications FOR SELECT
 TO authenticated
 USING (recipient_id = auth.uid());
 
--- Users can mark their own notifications as read
-CREATE POLICY "Users can update their own notifications"
+CREATE POLICY "Users update own notifications"
 ON public.notifications FOR UPDATE
 TO authenticated
 USING (recipient_id = auth.uid())
 WITH CHECK (recipient_id = auth.uid());
 
--- System or admins can create notifications
-CREATE POLICY "Admins or self can insert notifications"
+CREATE POLICY "Admins or self insert notifications"
 ON public.notifications FOR INSERT
 TO authenticated
 WITH CHECK (public.is_admin() OR recipient_id = auth.uid());
@@ -616,20 +575,234 @@ WITH CHECK (public.is_admin() OR recipient_id = auth.uid());
 -- ------------------------------------------------------------------------------
 -- 10. AUDIT_LOGS RLS
 -- ------------------------------------------------------------------------------
--- Only admins can read audit logs
-CREATE POLICY "Only admins can view audit logs"
+CREATE POLICY "Only admins view audit logs"
 ON public.audit_logs FOR SELECT
 TO authenticated
 USING (public.is_admin());
 
--- Authenticated users can insert audit logs for actions they perform
-CREATE POLICY "Active users can append audit logs"
+CREATE POLICY "Active users append audit logs"
 ON public.audit_logs FOR INSERT
 TO authenticated
 WITH CHECK (actor_id = auth.uid() OR actor_id IS NULL);
 
 -- ==============================================================================
--- INITIAL ADMIN BOOTSTRAP FUNCTION
+-- DATABASE TRANSACTION & RPC FUNCTIONS
 -- ==============================================================================
--- In Supabase SQL Editor, you can promote any specific email to admin:
+
+-- Atomic Daily Report Submission Procedure
+CREATE OR REPLACE FUNCTION public.submit_daily_report_atomic(
+  p_report_date DATE,
+  p_is_draft BOOLEAN,
+  p_entries JSONB
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_user_id UUID := auth.uid();
+  v_report_id UUID;
+  v_existing_status report_status;
+  v_entry JSONB;
+  v_work_item_id UUID;
+  v_hours NUMERIC;
+  v_minutes INT;
+  v_daily_prog NUMERIC;
+  v_overall_prog NUMERIC;
+  v_status report_status := CASE WHEN p_is_draft THEN 'draft'::report_status ELSE 'submitted'::report_status END;
+BEGIN
+  -- 1. Ensure user is active
+  IF NOT public.is_active_user() THEN
+    RAISE EXCEPTION 'Unauthorized: User is inactive or unauthenticated.';
+  END IF;
+
+  -- 2. Check existing report for this date
+  SELECT id, status INTO v_report_id, v_existing_status
+  FROM public.daily_reports
+  WHERE employee_id = v_user_id AND report_date = p_report_date;
+
+  IF v_existing_status = 'approved' THEN
+    RAISE EXCEPTION 'Report for % has already been approved and cannot be modified.', p_report_date;
+  END IF;
+
+  -- 3. Upsert report header
+  IF v_report_id IS NOT NULL THEN
+    UPDATE public.daily_reports
+    SET status = v_status,
+        submitted_at = CASE WHEN p_is_draft THEN NULL ELSE NOW() END,
+        updated_at = NOW()
+    WHERE id = v_report_id;
+
+    -- Delete old entries to replace atomically
+    DELETE FROM public.daily_work_entries WHERE daily_report_id = v_report_id;
+  ELSE
+    INSERT INTO public.daily_reports (
+      employee_id,
+      report_date,
+      status,
+      submitted_at
+    ) VALUES (
+      v_user_id,
+      p_report_date,
+      v_status,
+      CASE WHEN p_is_draft THEN NULL ELSE NOW() END
+    ) RETURNING id INTO v_report_id;
+  END IF;
+
+  -- 4. Insert each work entry with validation
+  FOR v_entry IN SELECT * FROM jsonb_array_elements(p_entries)
+  LOOP
+    v_work_item_id := (v_entry->>'work_item_id')::UUID;
+    v_hours := COALESCE((v_entry->>'hours_spent')::NUMERIC, 0);
+    v_minutes := COALESCE((v_entry->>'minutes_spent')::INT, 0);
+    v_daily_prog := COALESCE((v_entry->>'daily_progress_percentage')::NUMERIC, 0);
+    v_overall_prog := COALESCE((v_entry->>'reported_overall_progress')::NUMERIC, 0);
+
+    IF v_hours < 0 OR v_hours > 24 THEN
+      RAISE EXCEPTION 'Invalid hours: %', v_hours;
+    END IF;
+    IF v_minutes < 0 OR v_minutes > 59 THEN
+      RAISE EXCEPTION 'Invalid minutes: %', v_minutes;
+    END IF;
+
+    INSERT INTO public.daily_work_entries (
+      daily_report_id,
+      work_item_id,
+      activity_description,
+      work_completed,
+      hours_spent,
+      minutes_spent,
+      daily_progress_percentage,
+      reported_overall_progress,
+      blockers,
+      next_steps,
+      deliverable_url
+    ) VALUES (
+      v_report_id,
+      v_work_item_id,
+      v_entry->>'activity_description',
+      v_entry->>'work_completed',
+      v_hours,
+      v_minutes,
+      v_daily_prog,
+      v_overall_prog,
+      v_entry->>'blockers',
+      v_entry->>'next_steps',
+      v_entry->>'deliverable_url'
+    );
+
+    -- If submitted (not draft), log progress history
+    IF NOT p_is_draft AND v_overall_prog > 0 THEN
+      INSERT INTO public.progress_history (
+        work_item_id,
+        employee_id,
+        previous_progress,
+        new_progress,
+        change_description
+      ) VALUES (
+        v_work_item_id,
+        v_user_id,
+        (SELECT COALESCE(overall_progress, 0) FROM public.work_items WHERE id = v_work_item_id),
+        v_overall_prog,
+        v_entry->>'work_completed'
+      );
+
+      -- Update task progress in work_items
+      UPDATE public.work_items
+      SET overall_progress = v_overall_prog,
+          status = CASE WHEN v_overall_prog >= 100 THEN 'completed'::item_status ELSE 'in_progress'::item_status END,
+          updated_at = NOW()
+      WHERE id = v_work_item_id;
+    END IF;
+  END LOOP;
+
+  -- 5. Audit log
+  INSERT INTO public.audit_logs (actor_id, action, entity_type, entity_id, details)
+  VALUES (
+    v_user_id,
+    CASE WHEN p_is_draft THEN 'REPORT_DRAFT_SAVED' ELSE 'REPORT_SUBMITTED' END,
+    'daily_reports',
+    v_report_id::TEXT,
+    jsonb_build_object('report_date', p_report_date, 'entries_count', jsonb_array_length(p_entries))
+  );
+
+  RETURN jsonb_build_object('success', TRUE, 'report_id', v_report_id);
+END;
+$$;
+
+-- Atomic Admin Review Procedure
+CREATE OR REPLACE FUNCTION public.review_daily_report_atomic(
+  p_report_id UUID,
+  p_status report_status,
+  p_comment TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_admin_id UUID := auth.uid();
+  v_employee_id UUID;
+  v_report_date DATE;
+  v_admin_name TEXT;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized: Administrator privileges required.';
+  END IF;
+
+  SELECT employee_id, report_date INTO v_employee_id, v_report_date
+  FROM public.daily_reports
+  WHERE id = p_report_id;
+
+  IF v_employee_id IS NULL THEN
+    RAISE EXCEPTION 'Report not found.';
+  END IF;
+
+  SELECT full_name INTO v_admin_name
+  FROM public.profiles
+  WHERE id = v_admin_id;
+
+  -- Update report status
+  UPDATE public.daily_reports
+  SET status = p_status,
+      reviewed_by = v_admin_id,
+      reviewed_at = NOW(),
+      updated_at = NOW()
+  WHERE id = p_report_id;
+
+  -- Insert comment if present
+  IF p_comment IS NOT NULL AND length(trim(p_comment)) > 0 THEN
+    INSERT INTO public.report_comments (daily_report_id, author_id, comment)
+    VALUES (p_report_id, v_admin_id, trim(p_comment));
+  END IF;
+
+  -- Insert notification for employee
+  INSERT INTO public.notifications (recipient_id, title, message)
+  VALUES (
+    v_employee_id,
+    CASE WHEN p_status = 'approved' THEN 'Daily Report Approved' ELSE 'Revision Requested on Report' END,
+    CASE WHEN p_status = 'approved'
+      THEN 'Your daily work report for ' || v_report_date || ' was approved by ' || COALESCE(v_admin_name, 'Admin') || '.'
+      ELSE 'Revision requested on report for ' || v_report_date || ': ' || COALESCE(p_comment, 'Please check manager feedback.')
+    END
+  );
+
+  -- Log in audit trail
+  INSERT INTO public.audit_logs (actor_id, action, entity_type, entity_id, details)
+  VALUES (
+    v_admin_id,
+    CASE WHEN p_status = 'approved' THEN 'REPORT_APPROVED' ELSE 'REVISION_REQUESTED' END,
+    'daily_reports',
+    p_report_id::TEXT,
+    jsonb_build_object('report_date', v_report_date, 'comment', p_comment)
+  );
+
+  RETURN jsonb_build_object('success', TRUE);
+END;
+$$;
+
+-- Initial Admin Elevation Command:
+-- Run in Supabase SQL Editor for your authorized corporate admin email:
 -- UPDATE public.profiles SET role = 'admin' WHERE email = 'your-admin@esecurityin.com';

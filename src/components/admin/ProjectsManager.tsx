@@ -18,6 +18,7 @@ import { Project, ProjectStatus } from '../../types';
 import { StatusBadge } from '../common/StatusBadge';
 import { ProgressBar } from '../common/ProgressBar';
 import { ConfirmModal } from '../common/ConfirmModal';
+import { getTodayDateString } from '../../lib/dateUtils';
 
 interface ProjectsManagerProps {
   onOpenCreateWorkItemWithProject?: (projectId: string) => void;
@@ -34,7 +35,7 @@ export const ProjectsManager: React.FC<ProjectsManagerProps> = ({ onOpenCreateWo
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<ProjectStatus>('active');
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(getTodayDateString());
   const [deadline, setDeadline] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -51,7 +52,7 @@ export const ProjectsManager: React.FC<ProjectsManagerProps> = ({ onOpenCreateWo
     setName('');
     setDescription('');
     setStatus('active');
-    setStartDate(new Date().toISOString().split('T')[0]);
+    setStartDate(getTodayDateString());
     setDeadline('');
     setFormError(null);
     setIsModalOpen(true);

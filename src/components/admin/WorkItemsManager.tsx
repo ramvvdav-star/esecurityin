@@ -20,6 +20,7 @@ import { StatusBadge } from '../common/StatusBadge';
 import { PriorityBadge } from '../common/PriorityBadge';
 import { ProgressBar } from '../common/ProgressBar';
 import { ConfirmModal } from '../common/ConfirmModal';
+import { getTodayDateString } from '../../lib/dateUtils';
 
 interface WorkItemsManagerProps {
   initialProjectId?: string | null;
@@ -38,7 +39,7 @@ export const WorkItemsManager: React.FC<WorkItemsManagerProps> = ({ initialProje
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<ItemPriority>('medium');
   const [status, setStatus] = useState<ItemStatus>('pending');
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(getTodayDateString());
   const [deadline, setDeadline] = useState('');
   const [estimatedHours, setEstimatedHours] = useState('16');
   const [overallProgress, setOverallProgress] = useState('0');
@@ -64,7 +65,7 @@ export const WorkItemsManager: React.FC<WorkItemsManagerProps> = ({ initialProje
     setDescription('');
     setPriority('medium');
     setStatus('pending');
-    setStartDate(new Date().toISOString().split('T')[0]);
+    setStartDate(getTodayDateString());
     setDeadline('');
     setEstimatedHours('16');
     setOverallProgress('0');

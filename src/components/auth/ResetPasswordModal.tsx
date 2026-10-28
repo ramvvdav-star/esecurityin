@@ -9,7 +9,7 @@ interface ResetPasswordModalProps {
 }
 
 export const ResetPasswordModal: React.FC<ResetPasswordModalProps> = ({ isOpen, onClose, onBackToLogin }) => {
-  const { resetPassword, isDemoMode } = useAuth();
+  const { resetPassword } = useAuth();
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);

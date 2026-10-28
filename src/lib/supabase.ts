@@ -1,38 +1,28 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const STORAGE_KEY_URL = 'esecurityin_supabase_url';
-const STORAGE_KEY_ANON = 'esecurityin_supabase_anon_key';
-
-// Read from Vite environment variables or localStorage overrides
-export function getSupabaseCredentials(): { url: string; anonKey: string; isConfigured: boolean; isCustom: boolean } {
-  const envUrl = import.meta.env.VITE_SUPABASE_URL || '';
-  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-
-  const storedUrl = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_URL) : null;
-  const storedKey = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_ANON) : null;
-
-  const url = storedUrl || envUrl;
-  const anonKey = storedKey || envKey;
+// Read strictly from Vite environment variables for production security
+export function getSupabaseCredentials(): { url: string; anonKey: string; isConfigured: boolean } {
+  const envUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+  const envKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
   const isConfigured = Boolean(
-    url &&
-    anonKey &&
-    url.startsWith('https://') &&
-    !url.includes('your-project-id') &&
-    anonKey.length > 20
+    envUrl &&
+    envKey &&
+    envUrl.startsWith('https://') &&
+    !envUrl.includes('your-project-id') &&
+    envKey.length > 20
   );
 
   return {
-    url,
-    anonKey,
+    url: envUrl,
+    anonKey: envKey,
     isConfigured,
-    isCustom: Boolean(storedUrl || storedKey),
   };
 }
 
 let cachedClient: SupabaseClient | null = null;
-let currentClientUrl = '';
-let currentClientKey = '';
+let cachedUrl = '';
+let cachedKey = '';
 
 export function getSupabaseClient(): SupabaseClient | null {
   const { url, anonKey, isConfigured } = getSupabaseCredentials();
@@ -41,7 +31,7 @@ export function getSupabaseClient(): SupabaseClient | null {
     return null;
   }
 
-  if (cachedClient && currentClientUrl === url && currentClientKey === anonKey) {
+  if (cachedClient && cachedUrl === url && cachedKey === anonKey) {
     return cachedClient;
   }
 
@@ -51,10 +41,11 @@ export function getSupabaseClient(): SupabaseClient | null {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
+        storageKey: 'esecurityin_supabase_auth_token',
       },
     });
-    currentClientUrl = url;
-    currentClientKey = anonKey;
+    cachedUrl = url;
+    cachedKey = anonKey;
     return cachedClient;
   } catch (err) {
     console.error('Failed to initialize Supabase client:', err);
@@ -62,65 +53,51 @@ export function getSupabaseClient(): SupabaseClient | null {
   }
 }
 
-export function saveCustomSupabaseCredentials(url: string, anonKey: string) {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(STORAGE_KEY_URL, url.trim());
-    localStorage.setItem(STORAGE_KEY_ANON, anonKey.trim());
-    cachedClient = null;
-  }
-}
-
-export function clearCustomSupabaseCredentials() {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem(STORAGE_KEY_URL);
-    localStorage.removeItem(STORAGE_KEY_ANON);
-    cachedClient = null;
-  }
-}
-
-export async function testSupabaseConnection(url?: string, key?: string): Promise<{
+export async function testSupabaseConnection(): Promise<{
   success: boolean;
   message: string;
   hasTables?: boolean;
 }> {
-  const activeUrl = url || getSupabaseCredentials().url;
-  const activeKey = key || getSupabaseCredentials().anonKey;
+  const { url, anonKey, isConfigured } = getSupabaseCredentials();
 
-  if (!activeUrl || !activeKey || !activeUrl.startsWith('https://')) {
+  if (!isConfigured) {
     return {
       success: false,
-      message: 'Invalid Supabase URL or Anon key provided.',
+      message: 'Supabase environment variables (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY) are not configured.',
     };
   }
 
   try {
-    const testClient = createClient(activeUrl, activeKey);
-    // Attempt a light select on public.profiles or projects
-    const { data, error } = await testClient.from('profiles').select('id').limit(1);
+    const testClient = createClient(url, anonKey);
+    const { error } = await testClient.from('profiles').select('id').limit(1);
 
     if (error) {
-      if (error.code === 'PGRST116' || error.message.includes('relation "public.profiles" does not exist')) {
+      if (
+        error.code === 'PGRST116' ||
+        error.message?.includes('relation "public.profiles" does not exist') ||
+        error.message?.includes('does not exist')
+      ) {
         return {
           success: true,
           hasTables: false,
-          message: 'Connected to Supabase project! However, tables are not created yet. Please execute the SQL migration script.',
+          message: 'Connected to Supabase project! Database tables are not yet created. Execute the SQL migration script in Supabase SQL Editor.',
         };
       }
       return {
         success: false,
-        message: `Supabase query returned: ${error.message}`,
+        message: `Supabase query error: ${error.message}`,
       };
     }
 
     return {
       success: true,
       hasTables: true,
-      message: 'Successfully connected to live Supabase database with active tables!',
+      message: 'Connected to Supabase PostgreSQL database with active schemas.',
     };
   } catch (err: any) {
     return {
       success: false,
-      message: err?.message || 'Network connection failed.',
+      message: err?.message || 'Network connection to Supabase failed.',
     };
   }
 }

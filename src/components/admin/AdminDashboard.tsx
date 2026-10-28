@@ -21,6 +21,7 @@ import { useAuth } from '../../context/AuthContext';
 import { StatusBadge } from '../common/StatusBadge';
 import { PriorityBadge } from '../common/PriorityBadge';
 import { ProgressBar } from '../common/ProgressBar';
+import { getTodayDateString } from '../../lib/dateUtils';
 
 interface AdminDashboardProps {
   onNavigate: (view: any) => void;
@@ -43,7 +44,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const departments = Array.from(new Set(profiles.map((p) => p.department)));
 
   // Identify employees missing today's report
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayDateString();
   const activeEmployees = profiles.filter((p) => p.role === 'employee' && p.is_active);
   const submittedEmployeeIds = dailyReports
     .filter((r) => r.report_date === todayStr && (r.status === 'submitted' || r.status === 'approved'))

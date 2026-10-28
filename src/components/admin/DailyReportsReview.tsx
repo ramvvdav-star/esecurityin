@@ -21,6 +21,7 @@ import { DailyReport, ReportStatus } from '../../types';
 import { StatusBadge } from '../common/StatusBadge';
 import { PriorityBadge } from '../common/PriorityBadge';
 import { ProgressBar } from '../common/ProgressBar';
+import { formatDisplayDate } from '../../lib/dateUtils';
 
 export const DailyReportsReview: React.FC = () => {
   const { profile } = useAuth();
@@ -252,7 +253,7 @@ export const DailyReportsReview: React.FC = () => {
                     <div className="text-right">
                       <div className="flex items-center gap-1.5 text-slate-300 font-mono font-medium">
                         <Calendar size={13} className="text-cyan-400" />
-                        Report Date: <strong>{report.report_date}</strong>
+                        Report Date: <strong>{formatDisplayDate(report.report_date)}</strong>
                       </div>
                       <div className="text-[11px] text-slate-400 mt-0.5 font-mono">
                         Hours Logged: <strong className="text-cyan-400">{report.total_hours} hrs</strong> (

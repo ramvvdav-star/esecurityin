@@ -14,6 +14,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { StatusBadge } from '../common/StatusBadge';
+import { formatDisplayDate } from '../../lib/dateUtils';
 
 interface ReportHistoryViewProps {
   onEditReport: (date: string) => void;
@@ -90,10 +91,11 @@ export const ReportHistoryView: React.FC<ReportHistoryViewProps> = ({ onEditRepo
                     </div>
 
                     <div>
-                      <div className="flex items-center gap-2.5">
-                        <span className="font-bold text-base text-white font-mono">
-                          {report.report_date}
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <span className="font-bold text-base text-white">
+                          {formatDisplayDate(report.report_date)}
                         </span>
+                        <span className="text-xs font-mono text-slate-400">({report.report_date})</span>
                         <StatusBadge status={report.status} size="sm" />
                       </div>
                       <div className="text-xs text-slate-400 mt-0.5 font-mono">

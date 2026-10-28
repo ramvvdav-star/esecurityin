@@ -8,10 +8,10 @@ import {
   BarChart3,
   ScrollText,
   Database,
-  FileSpreadsheet,
   CalendarCheck,
   ListTodo,
   History,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -32,9 +32,16 @@ export type NavView =
 interface SidebarProps {
   currentView: NavView;
   onNavigate: (view: NavView) => void;
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => {
+export const Sidebar: React.FC<SidebarProps> = ({
+  currentView,
+  onNavigate,
+  isMobileOpen = false,
+  onCloseMobile,
+}) => {
   const { profile } = useAuth();
   const { dailyReports, workAssignments, workItems } = useData();
 
@@ -47,9 +54,28 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
   const myAssignedIds = workAssignments.filter((a) => a.employee_id === profile?.id).map((a) => a.work_item_id);
   const myActiveTasksCount = workItems.filter((w) => myAssignedIds.includes(w.id) && w.status !== 'completed').length;
 
-  return (
-    <aside className="w-64 bg-slate-900/95 border-r border-slate-800 flex flex-col justify-between p-4 flex-shrink-0">
-      <div className="space-y-6">
+  const handleNavClick = (view: NavView) => {
+    onNavigate(view);
+    if (onCloseMobile) onCloseMobile();
+  };
+
+  const navContent = (
+    <aside className="w-64 bg-slate-900/95 border-r border-slate-800 flex flex-col justify-between p-4 flex-shrink-0 h-full">
+      <div className="space-y-6 overflow-y-auto">
+        {/* Mobile close button header */}
+        <div className="flex md:hidden items-center justify-between pb-2 border-b border-slate-800">
+          <span className="text-xs font-bold text-white uppercase tracking-wider">Navigation Menu</span>
+          {onCloseMobile && (
+            <button
+              onClick={onCloseMobile}
+              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+              aria-label="Close navigation"
+            >
+              <X size={18} />
+            </button>
+          )}
+        </div>
+
         {/* Navigation Section */}
         <div>
           <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
@@ -60,7 +86,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
             {isAdmin ? (
               <>
                 <button
-                  onClick={() => onNavigate('dashboard')}
+                  onClick={() => handleNavClick('dashboard')}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer ${
                     currentView === 'dashboard'
                       ? 'bg-cyan-600/15 text-cyan-400 font-semibold border border-cyan-500/25'
@@ -74,7 +100,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
                 </button>
 
                 <button
-                  onClick={() => onNavigate('projects')}
+                  onClick={() => handleNavClick('projects')}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer ${
                     currentView === 'projects'
                       ? 'bg-cyan-600/15 text-cyan-400 font-semibold border border-cyan-500/25'
@@ -88,7 +114,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
                 </button>
 
                 <button
-                  onClick={() => onNavigate('work_items')}
+                  onClick={() => handleNavClick('work_items')}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer ${
                     currentView === 'work_items'
                       ? 'bg-cyan-600/15 text-cyan-400 font-semibold border border-cyan-500/25'
@@ -102,7 +128,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
                 </button>
 
                 <button
-                  onClick={() => onNavigate('review_reports')}
+                  onClick={() => handleNavClick('review_reports')}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer ${
                     currentView === 'review_reports'
                       ? 'bg-cyan-600/15 text-cyan-400 font-semibold border border-cyan-500/25'
@@ -121,7 +147,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
                 </button>
 
                 <button
-                  onClick={() => onNavigate('employees')}
+                  onClick={() => handleNavClick('employees')}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer ${
                     currentView === 'employees'
                       ? 'bg-cyan-600/15 text-cyan-400 font-semibold border border-cyan-500/25'
@@ -135,7 +161,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
                 </button>
 
                 <button
-                  onClick={() => onNavigate('analytics')}
+                  onClick={() => handleNavClick('analytics')}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer ${
                     currentView === 'analytics'
                       ? 'bg-cyan-600/15 text-cyan-400 font-semibold border border-cyan-500/25'
@@ -149,7 +175,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
                 </button>
 
                 <button
-                  onClick={() => onNavigate('audit_logs')}
+                  onClick={() => handleNavClick('audit_logs')}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer ${
                     currentView === 'audit_logs'
                       ? 'bg-cyan-600/15 text-cyan-400 font-semibold border border-cyan-500/25'
@@ -165,7 +191,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
             ) : (
               <>
                 <button
-                  onClick={() => onNavigate('dashboard')}
+                  onClick={() => handleNavClick('dashboard')}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer ${
                     currentView === 'dashboard'
                       ? 'bg-cyan-600/15 text-cyan-400 font-semibold border border-cyan-500/25'
@@ -179,7 +205,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
                 </button>
 
                 <button
-                  onClick={() => onNavigate('my_report')}
+                  onClick={() => handleNavClick('my_report')}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer ${
                     currentView === 'my_report'
                       ? 'bg-cyan-600/15 text-cyan-400 font-semibold border border-cyan-500/25'
@@ -196,7 +222,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
                 </button>
 
                 <button
-                  onClick={() => onNavigate('my_tasks')}
+                  onClick={() => handleNavClick('my_tasks')}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer ${
                     currentView === 'my_tasks'
                       ? 'bg-cyan-600/15 text-cyan-400 font-semibold border border-cyan-500/25'
@@ -215,7 +241,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
                 </button>
 
                 <button
-                  onClick={() => onNavigate('report_history')}
+                  onClick={() => handleNavClick('report_history')}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer ${
                     currentView === 'report_history'
                       ? 'bg-cyan-600/15 text-cyan-400 font-semibold border border-cyan-500/25'
@@ -238,7 +264,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
             System &amp; Database
           </div>
           <button
-            onClick={() => onNavigate('supabase_setup')}
+            onClick={() => handleNavClick('supabase_setup')}
             className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer ${
               currentView === 'supabase_setup'
                 ? 'bg-cyan-600/15 text-cyan-400 font-semibold border border-cyan-500/25'
@@ -274,5 +300,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
         </div>
       </div>
     </aside>
+  );
+
+  return (
+    <>
+      {/* Desktop static sidebar */}
+      <div className="hidden md:block h-full">
+        {navContent}
+      </div>
+
+      {/* Mobile drawer overlay */}
+      {isMobileOpen && (
+        <div className="fixed inset-0 z-40 md:hidden flex">
+          <div
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity"
+            onClick={onCloseMobile}
+          />
+          <div className="relative z-50 h-full">
+            {navContent}
+          </div>
+        </div>
+      )}
+    </>
   );
 };

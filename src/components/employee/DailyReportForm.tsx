@@ -19,6 +19,7 @@ import { useData } from '../../context/DataContext';
 import { DailyWorkEntry, DailyReport } from '../../types';
 import { StatusBadge } from '../common/StatusBadge';
 import { PriorityBadge } from '../common/PriorityBadge';
+import { getTodayDateString, formatDisplayDate } from '../../lib/dateUtils';
 
 interface DailyReportFormProps {
   initialDate?: string;
@@ -44,7 +45,7 @@ export const DailyReportForm: React.FC<DailyReportFormProps> = ({ initialDate, o
   const { workItems, workAssignments, dailyReports, saveDailyReport } = useData();
 
   const [reportDate, setReportDate] = useState<string>(
-    initialDate || new Date().toISOString().split('T')[0]
+    initialDate || getTodayDateString()
   );
 
   // Available tasks assigned to this employee
@@ -317,6 +318,19 @@ export const DailyReportForm: React.FC<DailyReportFormProps> = ({ initialDate, o
         <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-start gap-2.5">
           <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0" />
           <span>{successMsg}</span>
+        </div>
+      )}
+
+      {/* No Assigned Tasks Warning */}
+      {myAvailableTasks.length === 0 && (
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2.5">
+          <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+          <div>
+            <div className="font-semibold text-amber-200">No active tasks currently assigned to your account</div>
+            <p className="text-slate-400 mt-0.5">
+              You are signed in as {profile?.full_name} ({profile?.employee_id}). Your administrator has not assigned active tasks to your profile yet. Once an administrator assigns you to a work item, it will automatically appear in your task selector below.
+            </p>
+          </div>
         </div>
       )}
 
