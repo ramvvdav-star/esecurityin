@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
-import { Shield, Lock, Mail, User, Building, Briefcase, ArrowRight, AlertCircle, Database, CheckCircle2 } from 'lucide-react';
+import { Shield, Lock, Mail, User, Building, Briefcase, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 interface LoginFormProps {
   onOpenResetPassword: () => void;
-  onOpenSupabaseConfig: () => void;
+  onOpenSupabaseConfig?: () => void;
 }
 
-export const LoginForm: React.FC<LoginFormProps> = ({ onOpenResetPassword, onOpenSupabaseConfig }) => {
-  const { signIn, signUp, authError, clearAuthError, isConfigured, supabaseConnected } = useAuth();
+export const LoginForm: React.FC<LoginFormProps> = ({ onOpenResetPassword }) => {
+  const { signIn, signUp, authError, clearAuthError, isConfigured } = useAuth();
 
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
@@ -39,7 +39,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onOpenResetPassword, onOpe
           setLocalError(res.error || 'Account registration failed.');
         } else {
           setSignupSuccess(
-            'Employee registration submitted! If email confirmation is enabled on your Supabase project, check your inbox.'
+            'Employee registration submitted! Please sign in with your corporate credentials.'
           );
           setMode('login');
         }
@@ -116,28 +116,21 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onOpenResetPassword, onOpe
         )}
 
         {displayedError && (
-          <div className="mb-5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5">
+          <div className="mb-5 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5">
             <AlertCircle size={16} className="mt-0.5 flex-shrink-0 text-rose-400" />
-            <span>{displayedError}</span>
+            <span className="leading-relaxed">{displayedError}</span>
           </div>
         )}
 
         {!isConfigured && (
-          <div className="mb-5 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs space-y-2">
-            <div className="font-semibold flex items-center gap-1.5">
-              <Database size={14} />
-              <span>Supabase Configuration Required</span>
+          <div className="mb-5 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2.5">
+            <AlertCircle size={16} className="mt-0.5 flex-shrink-0 text-amber-400" />
+            <div>
+              <div className="font-semibold text-amber-200">System Connection Notice</div>
+              <p className="text-slate-400 leading-relaxed text-[11px] mt-0.5">
+                Application backend connection is pending configuration. Please contact your system administrator.
+              </p>
             </div>
-            <p className="text-slate-400 leading-relaxed text-[11px]">
-              Set <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> in your environment variables (.env.local or Vercel) to connect to your live project.
-            </p>
-            <button
-              type="button"
-              onClick={onOpenSupabaseConfig}
-              className="text-xs text-amber-300 hover:text-amber-200 underline font-medium cursor-pointer"
-            >
-              View Setup Instructions &amp; SQL Schema &rarr;
-            </button>
           </div>
         )}
 
@@ -248,20 +241,9 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onOpenResetPassword, onOpe
           </button>
         </form>
 
-        {/* Supabase Status Link */}
-        <div className="mt-6 pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-          <span className="flex items-center gap-1.5">
-            <span className={`w-2 h-2 rounded-full ${supabaseConnected ? 'bg-emerald-400' : 'bg-slate-500'}`} />
-            {supabaseConnected ? 'Supabase Connected' : 'Supabase Required'}
-          </span>
-          <button
-            type="button"
-            onClick={onOpenSupabaseConfig}
-            className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 hover:underline cursor-pointer"
-          >
-            <Database size={13} />
-            Setup &amp; SQL Schema
-          </button>
+        {/* Enterprise Security Footer */}
+        <div className="mt-6 pt-4 border-t border-slate-800/80 text-center text-[11px] text-slate-500">
+          Protected enterprise system &bull; Authorized eSecurityIn personnel only
         </div>
       </div>
     </div>

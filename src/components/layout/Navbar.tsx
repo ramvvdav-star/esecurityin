@@ -4,7 +4,6 @@ import {
   Bell,
   LogOut,
   User,
-  Database,
   Menu,
   X,
   ChevronDown,
@@ -13,17 +12,16 @@ import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 
 interface NavbarProps {
-  onOpenSupabaseConfig: () => void;
+  onOpenSupabaseConfig?: () => void;
   onToggleMobileMenu?: () => void;
   isMobileMenuOpen?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
-  onOpenSupabaseConfig,
   onToggleMobileMenu,
   isMobileMenuOpen,
 }) => {
-  const { profile, signOut, supabaseConnected } = useAuth();
+  const { profile, signOut } = useAuth();
   const { notifications, markNotificationAsRead, markAllNotificationsAsRead, dailyReports } = useData();
 
   const [showNotifications, setShowNotifications] = useState(false);
@@ -61,19 +59,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* Right utilities */}
       <div className="flex items-center gap-3">
-        {/* Supabase Connection Status Indicator */}
-        <button
-          onClick={onOpenSupabaseConfig}
-          className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
-            supabaseConnected
-              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-              : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
-          }`}
-          title="Click to view Supabase connection status & SQL schema"
-        >
-          <Database size={13} className={supabaseConnected ? 'text-emerald-400' : 'text-amber-400'} />
-          <span>{supabaseConnected ? 'Supabase Live' : 'Supabase Config'}</span>
-        </button>
 
         {/* Notifications Popover */}
         <div className="relative">
@@ -173,19 +158,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="text-[11px] text-slate-400 truncate">{profile?.email}</div>
                 <div className="text-[10px] text-cyan-400 mt-0.5">{profile?.department}</div>
               </div>
-
-              <button
-                onClick={() => {
-                  setShowUserMenu(false);
-                  onOpenSupabaseConfig();
-                }}
-                className="w-full px-3 py-2 text-left hover:bg-slate-800 flex items-center gap-2 text-slate-300 cursor-pointer"
-              >
-                <Database size={14} className="text-cyan-400" />
-                Database &amp; SQL Settings
-              </button>
-
-              <div className="my-1 border-t border-slate-800" />
 
               <button
                 onClick={() => {

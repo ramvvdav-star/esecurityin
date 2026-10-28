@@ -298,6 +298,12 @@ requiredRlsTables.forEach((stmt) => {
   );
 });
 
+// Verify email rate limit bypass trigger is included in SQL schema
+assert(
+  ESECURITYIN_SQL_SCHEMA.includes('auto_confirm_new_user'),
+  'SQL schema includes auto_confirm_new_user trigger to remove email rate limit'
+);
+
 // -----------------------------------------------------------------
 // Group 5: Total Hours & Workload Calculation Logic
 // -----------------------------------------------------------------

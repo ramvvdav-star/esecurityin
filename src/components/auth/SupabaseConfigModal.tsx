@@ -10,6 +10,8 @@ import {
   ShieldAlert,
   Rocket,
   AlertTriangle,
+  MailCheck,
+  Zap,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ESECURITYIN_SQL_SCHEMA } from '../../lib/sqlSchema';
@@ -18,15 +20,17 @@ import { getSupabaseCredentials } from '../../lib/supabase';
 interface SupabaseConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialTab?: 'status' | 'sql' | 'admin' | 'email_rate_limit' | 'vercel';
 }
 
-export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen, onClose }) => {
+export const SupabaseConfigModal: React.FC<SupabaseConfigModalProps> = ({ isOpen, onClose, initialTab = 'status' }) => {
   const { supabaseConnected, connectionStatus, isConfigured } = useAuth();
   const { url } = getSupabaseCredentials();
 
-  const [activeTab, setActiveTab] = useState<'status' | 'sql' | 'admin' | 'vercel'>('status');
+  const [activeTab, setActiveTab] = useState<'status' | 'sql' | 'admin' | 'email_rate_limit' | 'vercel'>(initialTab);
   const [copiedSQL, setCopiedSQL] = useState(false);
   const [copiedAdminCmd, setCopiedAdminCmd] = useState(false);
+  const [copiedRateLimitSQL, setCopiedRateLimitSQL] = useState(false);
 
   if (!isOpen) return null;
 
@@ -44,6 +48,32 @@ WHERE email = 'your-admin@esecurityin.com';`;
     navigator.clipboard.writeText(adminBootstrapSQL);
     setCopiedAdminCmd(true);
     setTimeout(() => setCopiedAdminCmd(false), 2500);
+  };
+
+  const rateLimitBypassSQL = `-- 1. Immediately auto-confirm all existing user accounts
+UPDATE auth.users 
+SET email_confirmed_at = COALESCE(email_confirmed_at, NOW()) 
+WHERE email_confirmed_at IS NULL;
+
+-- 2. Add trigger to auto-confirm all future signups immediately
+CREATE OR REPLACE FUNCTION public.auto_confirm_new_user()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  NEW.email_confirmed_at := COALESCE(NEW.email_confirmed_at, NOW());
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_auto_confirm ON auth.users;
+CREATE TRIGGER on_auth_user_auto_confirm
+  BEFORE INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.auto_confirm_new_user();`;
+
+  const handleCopyRateLimitSQL = () => {
+    navigator.clipboard.writeText(rateLimitBypassSQL);
+    setCopiedRateLimitSQL(true);
+    setTimeout(() => setCopiedRateLimitSQL(false), 2500);
   };
 
   return (
@@ -109,6 +139,17 @@ WHERE email = 'your-admin@esecurityin.com';`;
           >
             <ShieldAlert size={16} />
             Admin Provisioning
+          </button>
+          <button
+            onClick={() => setActiveTab('email_rate_limit')}
+            className={`py-3 px-3 font-medium border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'email_rate_limit'
+                ? 'border-cyan-400 text-cyan-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Zap size={16} className="text-amber-400" />
+            <span>Remove Email Rate Limit</span>
           </button>
           <button
             onClick={() => setActiveTab('vercel')}
@@ -225,6 +266,95 @@ WHERE email = 'your-admin@esecurityin.com';`;
                 <pre className="p-3 bg-slate-950 rounded-lg text-xs font-mono text-emerald-400 border border-slate-800">
                   {adminBootstrapSQL}
                 </pre>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'email_rate_limit' && (
+            <div className="space-y-6 text-sm">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-amber-400 mb-1">
+                  <Zap size={16} />
+                  <span>Permanent Solution</span>
+                </div>
+                <h3 className="text-lg font-bold text-white">How to Remove the Supabase Email Rate Limiter</h3>
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                  Supabase includes a shared free SMTP mailer that throttles outgoing emails to <strong className="text-slate-200">3-4 emails per hour</strong>.
+                  When email confirmation is enabled, every new signup triggers an email, quickly resulting in the error: <code className="text-rose-400 bg-slate-950 px-1 py-0.5 rounded">over_email_send_rate_limit (429)</code>.
+                </p>
+              </div>
+
+              {/* Solution 1: Disable Confirm Email (Recommended) */}
+              <div className="p-5 rounded-xl bg-slate-800/40 border border-slate-700/80 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-400 font-bold text-xs flex items-center justify-center">
+                    1
+                  </span>
+                  <h4 className="font-bold text-white text-sm">
+                    Recommended: Turn OFF "Confirm email" in Supabase (Takes 30 Seconds)
+                  </h4>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Turning off email confirmation completely stops Supabase from attempting to send emails on signup.
+                  Employees are provisioned immediately with instant login access, completely eliminating the rate limit!
+                </p>
+                <div className="p-3.5 bg-slate-950 rounded-lg text-xs space-y-1.5 border border-slate-800 text-slate-300">
+                  <div className="font-semibold text-cyan-400">Step-by-step instructions:</div>
+                  <ol className="list-decimal list-inside space-y-1 text-slate-300">
+                    <li>Open your <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">Supabase Project Dashboard</a>.</li>
+                    <li>In the left sidebar, click <strong className="text-white">Authentication</strong>.</li>
+                    <li>Under Configuration, select <strong className="text-white">Providers</strong> &rarr; click <strong className="text-white">Email</strong>.</li>
+                    <li>Toggle <strong className="text-amber-300">"Confirm email"</strong> to <strong className="text-rose-400">OFF</strong> (Disabled).</li>
+                    <li>Click <strong className="text-white">Save</strong> at the bottom of the Email provider card.</li>
+                  </ol>
+                </div>
+              </div>
+
+              {/* Solution 2: SQL Auto-Confirm Trigger */}
+              <div className="p-5 rounded-xl bg-slate-800/40 border border-slate-700/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold text-xs flex items-center justify-center">
+                      2
+                    </span>
+                    <h4 className="font-bold text-white text-sm">
+                      Database Level: Run Auto-Confirm &amp; Unlock SQL
+                    </h4>
+                  </div>
+                  <button
+                    onClick={handleCopyRateLimitSQL}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs rounded-lg border border-slate-700 cursor-pointer font-medium"
+                  >
+                    {copiedRateLimitSQL ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                    {copiedRateLimitSQL ? 'Copied SQL!' : 'Copy Auto-Confirm SQL'}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Run this in your Supabase <strong>SQL Editor</strong>. It auto-confirms any existing locked user accounts and installs a database trigger that auto-confirms all future signups immediately:
+                </p>
+                <pre className="p-3 bg-slate-950 rounded-lg text-xs font-mono text-emerald-400 border border-slate-800 overflow-x-auto max-h-48">
+                  {rateLimitBypassSQL}
+                </pre>
+              </div>
+
+              {/* Solution 3: Custom SMTP */}
+              <div className="p-5 rounded-xl bg-slate-800/40 border border-slate-700/80 space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-purple-500/20 text-purple-400 font-bold text-xs flex items-center justify-center">
+                    3
+                  </span>
+                  <h4 className="font-bold text-white text-sm">
+                    Production Email Delivery: Configure Custom SMTP
+                  </h4>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  If your enterprise requires automated email sending (such as password recovery links and welcome emails), replace Supabase&apos;s free shared mailer with a dedicated email service provider:
+                </p>
+                <div className="text-xs text-slate-400 space-y-1 bg-slate-950 p-3 rounded-lg border border-slate-800">
+                  <p>&bull; Go to <strong className="text-slate-200">Project Settings</strong> &rarr; <strong className="text-slate-200">Authentication</strong> &rarr; <strong className="text-slate-200">SMTP Settings</strong>.</p>
+                  <p>&bull; Toggle ON <strong className="text-slate-200">Enable Custom SMTP</strong> and connect <strong>Resend</strong>, <strong>SendGrid</strong>, or <strong>Amazon SES</strong>.</p>
+                  <p>&bull; This completely removes the 3-email-per-hour cap and uses your custom domain for secure email delivery.</p>
+                </div>
               </div>
             </div>
           )}

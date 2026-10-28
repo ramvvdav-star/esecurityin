@@ -87,7 +87,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSupabaseConnected(false);
         setConnectionStatus({
           success: false,
-          message: 'VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are not configured.',
+          message: 'Authentication service connection is pending configuration.',
         });
         return;
       }
@@ -202,7 +202,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const client = getSupabaseClient();
 
     if (!client) {
-      const msg = 'Supabase environment variables (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY) are not set.';
+      const msg = 'Authentication service is temporarily unavailable. Please verify connection credentials.';
       setAuthError(msg);
       return { success: false, error: msg };
     }
@@ -218,6 +218,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes('email not confirmed')) {
+          return {
+            success: false,
+            error: 'Account email has not been confirmed yet. Please check your inbox or contact your administrator for activation.',
+          };
+        }
+        if (msg.includes('rate limit') || (error as any).status === 429) {
+          return {
+            success: false,
+            error: 'Too many sign-in attempts. Please wait a few moments before trying again.',
+          };
+        }
         return { success: false, error: error.message };
       }
 
@@ -256,7 +269,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const client = getSupabaseClient();
 
     if (!client) {
-      const msg = 'Supabase is not configured.';
+      const msg = 'Registration service is temporarily unavailable.';
       setAuthError(msg);
       return { success: false, error: msg };
     }
@@ -281,6 +294,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes('rate limit') || msg.includes('over_email_send_rate_limit') || (error as any).status === 429) {
+          return {
+            success: false,
+            error: 'Email delivery rate limit reached. Please wait a few minutes before retrying or contact your company administrator.',
+          };
+        }
         return { success: false, error: error.message };
       }
 
@@ -320,7 +340,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const resetPassword = async (email: string): Promise<{ success: boolean; error?: string }> => {
     const client = getSupabaseClient();
     if (!client) {
-      return { success: false, error: 'Supabase client is not configured.' };
+      return { success: false, error: 'Authentication service is not configured.' };
     }
 
     try {
@@ -329,6 +349,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes('rate limit') || msg.includes('over_email_send_rate_limit') || (error as any).status === 429) {
+          return {
+            success: false,
+            error: 'Password reset rate limit reached. Please wait a few minutes before retrying or contact your administrator.',
+          };
+        }
         return { success: false, error: error.message };
       }
 

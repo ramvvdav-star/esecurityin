@@ -7,7 +7,6 @@ import {
   Users,
   BarChart3,
   ScrollText,
-  Database,
   CalendarCheck,
   ListTodo,
   History,
@@ -26,8 +25,7 @@ export type NavView =
   | 'audit_logs'
   | 'my_report'
   | 'my_tasks'
-  | 'report_history'
-  | 'supabase_setup';
+  | 'report_history';
 
 interface SidebarProps {
   currentView: NavView;
@@ -256,26 +254,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </>
             )}
           </nav>
-        </div>
-
-        {/* Database & RLS Settings */}
-        <div>
-          <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            System &amp; Database
-          </div>
-          <button
-            onClick={() => handleNavClick('supabase_setup')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all cursor-pointer ${
-              currentView === 'supabase_setup'
-                ? 'bg-cyan-600/15 text-cyan-400 font-semibold border border-cyan-500/25'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <Database size={18} className="text-cyan-400" />
-              <span>Supabase &amp; RLS Policies</span>
-            </div>
-          </button>
         </div>
       </div>
 

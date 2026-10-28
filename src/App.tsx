@@ -3,10 +3,8 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider, useData } from './context/DataContext';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar, NavView } from './components/layout/Sidebar';
-import { SupabaseSetupBanner } from './components/common/SupabaseSetupBanner';
 import { LoginForm } from './components/auth/LoginForm';
 import { ResetPasswordModal } from './components/auth/ResetPasswordModal';
-import { SupabaseConfigModal } from './components/auth/SupabaseConfigModal';
 
 // Admin Views
 import { AdminDashboard } from './components/admin/AdminDashboard';
@@ -32,7 +30,6 @@ const MainAppContent: React.FC = () => {
 
   const [currentView, setCurrentView] = useState<NavView>('dashboard');
   const [selectedReportDate, setSelectedReportDate] = useState<string>(getTodayDateString());
-  const [isSupabaseConfigOpen, setIsSupabaseConfigOpen] = useState(false);
   const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
   const [preselectedProjectId, setPreselectedProjectId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -57,16 +54,11 @@ const MainAppContent: React.FC = () => {
       <>
         <LoginForm
           onOpenResetPassword={() => setIsResetPasswordOpen(true)}
-          onOpenSupabaseConfig={() => setIsSupabaseConfigOpen(true)}
         />
         <ResetPasswordModal
           isOpen={isResetPasswordOpen}
           onClose={() => setIsResetPasswordOpen(false)}
           onBackToLogin={() => setIsResetPasswordOpen(false)}
-        />
-        <SupabaseConfigModal
-          isOpen={isSupabaseConfigOpen}
-          onClose={() => setIsSupabaseConfigOpen(false)}
         />
       </>
     );
@@ -91,12 +83,8 @@ const MainAppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased selection:bg-cyan-500 selection:text-slate-950">
-      {/* Supabase Connectivity Banner */}
-      <SupabaseSetupBanner onOpenConfig={() => setIsSupabaseConfigOpen(true)} />
-
       {/* Main Top Navigation */}
       <Navbar
-        onOpenSupabaseConfig={() => setIsSupabaseConfigOpen(true)}
         onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         isMobileMenuOpen={isMobileMenuOpen}
       />
@@ -123,13 +111,7 @@ const MainAppContent: React.FC = () => {
         {/* Role-Aware Sidebar */}
         <Sidebar
           currentView={currentView}
-          onNavigate={(view) => {
-            if (view === 'supabase_setup') {
-              setIsSupabaseConfigOpen(true);
-            } else {
-              setCurrentView(view);
-            }
-          }}
+          onNavigate={(view) => setCurrentView(view)}
           isMobileOpen={isMobileMenuOpen}
           onCloseMobile={() => setIsMobileMenuOpen(false)}
         />
@@ -194,12 +176,6 @@ const MainAppContent: React.FC = () => {
           </div>
         </main>
       </div>
-
-      {/* Global Supabase Reference Modal */}
-      <SupabaseConfigModal
-        isOpen={isSupabaseConfigOpen}
-        onClose={() => setIsSupabaseConfigOpen(false)}
-      />
     </div>
   );
 };
