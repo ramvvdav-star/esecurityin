@@ -1,0 +1,6 @@
+{
+  "name": "eSecurityIn Employee Task Tracker",
+  "description": "Production-grade daily work tracking, project assignments, RLS security, and report review system for eSecurityIn with Supabase backend.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
